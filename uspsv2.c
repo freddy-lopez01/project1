@@ -1,15 +1,13 @@
 #include <stdio.h>
 #include <unistd.h>
-#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include "p1fxns.c"
-#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <signal.h>
+#include <sys/wait.h>
+
 
 #define F_OK 0
 #define UNUSED __attribute__((unused))
@@ -17,133 +15,129 @@
 
 
 
-int bytes;
-int exec_stat; 
-int status;
-int proc_id[MAX]; 
+int parse(int fd, char ***arr){
+	char buf[MAX];
+	char word[MAX];
+	int i = 0;
+	int j;  
+
+	while((j = p1getline(fd, buf, BUFSIZ)) != 0){  // while there is still a next line
+		int k = 0; 
+		int index = 0; 
+		while((index = p1getword(buf, index, word)) != -1){ 
+			arr[i][k] = p1strdup(word);
+			k++; 
+		}
+		arr[i][k] = NULL;
+		i++; 
+	}
+	return 1; 
+}
+
 
 
 volatile int nprocesses = 0; 
 
+
+
+
 static void onusr1(UNUSED int sig){
 }
 
+
 static void onchld(UNUSED int sig){
 	pid_t pid; 
-	//p1putstr(1, ("Number of processes --> %d\n", nprocesses));
+	int status; 
+	printf("Number of processes --> %d\n", nprocesses);
 
 	while((pid = waitpid(-1, &status, WNOHANG)) > 0){
 		if(WIFEXITED(status) || WIFSIGNALED(status)){
 			nprocesses--; 
-			p1putstr(1, "killing...\n");
-			kill(getpid(), SIGUSR1);
 		}
 	}
 }
 
+void executePrograms(char ***arr, int numPrograms){
+	signal(SIGCHLD, onchld);
+	signal(SIGUSR1, onusr1);
+	struct timespec ms30 = {0, 200000000};
+	bool lflag = false; 
 
 
-void parse(char *in, char **progs){
-	while (*in != '\0') {       /* if not the end of line ....... */ 
-          while (*in == ' ' || *in == '\t' || *in == '\n')
-               *in++ = '\0';     /* replace white spaces with 0    */
-          *progs++ = in;          /* save the argument position     */
-          while (*in != '\0' && *in != ' ' && 
-                 *in != '\t' && *in != '\n') 
-               in++;             /* skip the argument until ...    */
-     }
-     *progs = '\0';                 /* mark the end of argument list  */
-}
+	pid_t pid[numPrograms];
 
+	for(int i = 0; i < numPrograms; i++){
 
-void executestdin(char **programArr){
+		pid[i] = fork();
 
-
-		int pid = fork();
-			switch(pid){
-
-			case -1: fprintf(stderr, "Parent: fork failed\n");
-				goto wait_for_children; 
-			case 0: 
-				printf("\n\n");
-				sigwait(SIGUSR1, SIGSTOP);
-				execvp(*programArr, programArr);
-				fprintf(stderr, "Child: execvp() failed\n");
-				exit(EXIT_FAILURE);
-			default: nprocesses++; 
+		switch(pid[i]){
+		case -1: 
+			p1putstr(1, "error when forking()\n");
+			goto wait_for_children;
+		case 0:
+			if(i == numPrograms-1){
+				lflag = true; 
 			}
+			printf("child here: %d\n", getpid());
+			//wait here for sigusr1 
+			pause();
+						 // children waiting for signal
+			execvp(arr[i][0], arr[i]);
+		default:
+			nprocesses++; 
 
-		wait_for_children:
-			while(nprocesses > 0){
-				pause();
-			}
-}
-
-
-
-
-
-
-void executefile(char **programArr, char **arguments){
-	int total_progms = (sizeof(programArr) / sizeof(programArr[0]));
-
-	for(int k = 0; k <= total_progms; k++){
-
-		proc_id[k] = fork();
-			switch(proc_id[k]){
-
-			case -1: 								//fprintf(stderr, "Parent: fork failed\n");
-				goto wait_for_children; 
-			case 0: 
-												//printf("\n\nabout to exec()\n");
-												//printf("%s\n", arguments[k]);
-												//printf("progs: %s\n", programArr[k]);
-
-				signal(SIGUSR1, onusr1);
-				execvp(*programArr[k], arguments[k]);
-												//fprintf(stderr, "Child: execvp() failed\n");
-				exit(EXIT_FAILURE);
-			default: nprocesses++; 
-				kill(proc_id[k], SIGUSR2);
-				wait(&status);
-			}
-
-		wait_for_children:
-			while(nprocesses > 0){
-				pause();
-			}
 		}
+	}
+	wait_for_children:
 
-	printf("\nfinished executing\n");
+		while(lflag != true){
+			pause();
+		}
+		printf("oops\n");
 
+	p1putstr(1, "Stoping all processes\n");	
+	for(int i = 0; i < numPrograms; i++){
+		kill(pid[i], SIGSTOP);
+	}
 
+	(void)nanosleep(&ms30, NULL); // wait for a little before restarting execution
+
+	p1putstr(1, "restarting all processes");
+
+	for(int i = 0; i < numPrograms; i++){
+		kill(pid[i], SIGCONT);
+	}
 }
 
 
 
 
 int main(UNUSED int argc, char *argv[]){
-	struct timespec ms; 
-	char buf[BUFSIZ];
-	char *progs[MAX]; 
-	char *args[MAX];
+	/* 
+	Need to check that there are at least two arguments in the ./uspsv1 workload file
+	next if file is specified then open up the file and read the first line
+	once the whole line is read, pass in the command and its aguments 
+	*/
+	char word[MAX];
+	char buf[MAX];
 
 
-	int qflag = 0; 
-	int fflag = 0; 
+	char ***programs;
+
+	char *fname; 
 	int quantum; 
-	int fd;  
+	int fd; 
+	int qflag = 0; 
+
+
 
 	int c; 
-
-	opterr = 0; 
-	while((c = getopt(argc, argv, "qf:")) != -1)
+	//Check for usage errors that could occur
+    opterr = 0; 
+	while((c = getopt(argc, argv, "q:")) != -1)
 		switch(c){
 			case 'q':
 				qflag = 1;
-				break;
-			case 'f':
-				fflag = 1; 
 				break;
 			case '?':
 				p1putstr(2, ("Usage: ./uspsv2 [-q <quantum in msec>] [workload file]\n"));
@@ -151,97 +145,120 @@ int main(UNUSED int argc, char *argv[]){
 				continue; 
 		}
 
+	//Check for usage errors that could occur
+
 	if(qflag){
-		if(argc > 4){
-			p1putstr(2, ("Usage: ./uspsv2 [q <quantum in msec>] [workload file]\n"));
+		if(argc == 3){
+			quantum = p1atoi(argv[2]);
+		} 
+		if(argc ==4 ){
+			quantum = argv[2];
+			fname =  argv[4];
+		}
+
+	} else if(argc == 2){
+		//quantum = p1atoi(argv[1]);
+
+		char *p;
+		int val = -1; 
+		if((p = getenv("USPS_QUANTUM_MSEC")) != NULL){
+			val = p1atoi(p);
+		}
+		quantum = val; 
+
+		printf("quantum: %d\n", val);
+		fname = argv[1];
+
+													// Proceed to read from the specified file and execute commands from file
+		fd = open(fname, 0); 						// open file that was put in by the user
+		if(fd == -1){
+			p1putstr(2, "OPEN ERROR\n");
+			p1perror(fd, "open"); 						// error  
 			return EXIT_FAILURE; 
 		}
-
-		printf("qflag: %d\n", qflag);
-		quantum = p1atoi(argv[2]);
-
-		printf("quantum: %d\nfile: %s\n", quantum, argv[3]);
-
-
-	} else if(fflag){
-
-		fd = open(argv[2], O_RDONLY);
-
-		printf("argc == 2 check\nargc: %d\n", argc);
-
-	}else if(argc > 1){
-
-		printf("ERROR: To many arguments provided\n"); // REMOVE THIS PRINTF() with a system call without
-												       // having an initialized fd
-		p1putstr(2, ("Usage: ./uspsv2 [q <quantum in msec>] [workload file]\n"));
-		return EXIT_FAILURE;
-	}else{ 
-												// information is comming from stdin 
-		
-		int i = 0; 
-		bytes = p1getline(0, buf, MAX);
-		int wrdbytes = 0;
-		//printf("buf: %s\n", buf);
-
-		parse(buf, progs);
-												// get the program command 
-												/*wrdbytes = p1getword(buf, wrdbytes, progs[i]);
-								                // this works
-
-												int j = 0; 
-												while(wrdbytes != -1){
-												wrdbytes = p1getword(buf, wrdbytes, args[i]);
-												printf("wrdbytes: %d\n", wrdbytes);
-												j++; 
-												}*/
-		signal(SIGCHLD, onchld);
-		signal(SIGUSR1, onusr1);
-
-
-		executestdin(progs);
-		printf("execution successful\nExiting...\n");
-		return EXIT_SUCCESS; 
-
-	}
-
-	printf("here ready to read from input file\n");
-	
-	int subindex = 0; 
-	char word[MAX];
-	//p1getline(fd, buf, MAX);
-	//printf("first p1getline buf: %s\n", buf);
-
-	while((p1getline(fd, buf, MAX)) != 0){
-		printf("in while: %s\n", buf);
-		int index = 0;
-
-		index = p1getword(buf, index, word);
-		printf("%s\n", word);
-		progs[subindex] = p1strdup(word);
-		printf("progs: %s\n", progs[subindex]);
-		
-		int array2d = 0;
-		while((index = p1getword(buf, index, word)) != -1){
-			//p1getword(buf, index, word);
-			args[subindex]/*[array2d]*/ = p1strdup(buf);
-			array2d++;
+		int progcount = 0;
+		int argcount = 0;
+		int j; 
+		int largest_line = 0; 
+		while((j = p1getline(fd, buf, BUFSIZ)) != 0){  // while there is still a next line
+			int index = 0; 
+			while((index = p1getword(buf, index, word)) != -1){ 
+				argcount++;
+			}
+			if(argcount > largest_line){
+				largest_line = argcount;
+			}
+			progcount++;
+			argcount = 0; 
 		}
-		subindex++;
 
-	}
+		//printf("prog count: %d\nlargest line: %d\n", progcount, largest_line);
 
-	printf("progs: %s\n%s\n", progs[0], progs[1]);
-	printf("args: %s\n%s\n", args[0], args[1]);
-	//printf("args: %s\n%s\n", args[0][0], args[1][0]);
+		// malloc a a 2d array that will become a 3d array with p1stdup()
+		programs = (char***)malloc(sizeof(char **) * (progcount+1));
+		for(int i = 0; i < progcount; i++){
+			programs[i] = (char**)malloc(sizeof(char*) * (largest_line+1));
+		}
+
+		close(fd);
+		fd = open(fname, 0);
+		parse(fd, programs);
+		close(fd);
+
+		executePrograms(programs, progcount);
 
 
-	printf("herre\n");
+		printf("Done\n");
+		for(int i = 0; i < (progcount+1); i++){
+			free(programs[i]);
+		}
 
-	
+		free(programs);
 
-	executefile(progs, args);
+	} else{
+
+		char buf[MAX];
+		char word[MAX];
+		char *prog[MAX]; 
+
+		char *p;
+		int val = -1; 
+		if((p = getenv("USPS_QUANTUM_MSEC")) != NULL){
+			val = p1atoi(p);
+		}
+		quantum = val; 
 
 
+		int index = 0; 
+		UNUSED int bytes; 
+		p1putstr(1, "Enter bash command: \n");
+		int i = 0; 
 
+		bytes = p1getline(0, buf, MAX);
+
+		while((i = p1getword(buf, i, word)) != -1){
+			prog[index] = p1strdup(word); 
+			index++;
+		}
+
+
+		int pid; 
+		//p1putstr(1, "here\n");
+		pid = fork();
+			switch(pid){
+
+			case -1:
+				fprintf(stderr, "Parent: fork failed\n");
+				exit(EXIT_FAILURE);
+			case 0: 
+				execvp(*prog, prog);
+				fprintf(stderr, "Child: execvp() failed\n");
+				exit(EXIT_FAILURE);
+			default:
+				wait(NULL); 
+			}
+		return EXIT_SUCCESS;
+		printf("rip\n");
+	}	
 	return EXIT_SUCCESS;
 }

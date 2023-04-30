@@ -76,7 +76,7 @@ void executestdin(char **programArr){
 	wait_for_children:
 		while(nprocesses > 0){
 			pause();
-		}
+	}
 
 	printf("\nfinished executing\n");
 
@@ -173,6 +173,7 @@ int main(UNUSED int argc, char *argv[]){
 	int index = 0;
 	int subindex = 0; 
 	char word[MAX];
+	
 	p1getline(fd, buf, MAX);
 	printf("%s\n", buf);
 

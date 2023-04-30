@@ -5,6 +5,7 @@
 #include "p1fxns.c"
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/wait.h>
 
 #define F_OK 0
 #define UNUSED __attribute__((unused))
@@ -62,12 +63,10 @@ int main(UNUSED int argc, char *argv[]){
 	*/
 	char word[MAX];
 	char buf[MAX];
-
-	int pid;
 	char ***programs;
 
 	char *fname; 
-	int quantum; 
+	UNUSED int quantum; 
 	int fd; 
 	int qflag = 0; 
 
@@ -91,10 +90,10 @@ int main(UNUSED int argc, char *argv[]){
 
 	if(qflag){
 		if(argc == 3){
-			quantum = argv[2];
+			quantum = p1atoi(argv[2]);
 		} 
 		if(argc ==4 ){
-			quantum = argv[2];
+			quantum = p1atoi(argv[2]);
 			fname =  argv[4];
 		}
 
@@ -108,7 +107,7 @@ int main(UNUSED int argc, char *argv[]){
 		}
 		quantum = val; 
 
-		printf("quantum: %d\n", val);
+		//printf("quantum: %d\n", val);
 		fname = argv[1];
 
 													// Proceed to read from the specified file and execute commands from file
@@ -150,7 +149,13 @@ int main(UNUSED int argc, char *argv[]){
 
 		executePrograms(programs, progcount);
 
-		printf("Done\n");
+		//printf("Done\n");
+		for(int i = 0; i < (progcount+1); i++){
+			free(programs[i]);
+		}
+
+		free(programs);
+
 
 	} else{
 
@@ -185,7 +190,8 @@ int main(UNUSED int argc, char *argv[]){
 			switch(pid){
 
 			case -1:
-				fprintf(stderr, "Parent: fork failed\n");
+				//fprintf(stderr, "Parent: fork failed\n");
+				p1putstr(2, "Parent: fork() failed\n");
 				exit(EXIT_FAILURE);
 			case 0: 
 				execvp(*prog, prog);
@@ -195,7 +201,8 @@ int main(UNUSED int argc, char *argv[]){
 				wait(NULL); 
 			}
 		return EXIT_SUCCESS;
-		printf("rip\n");
+		//printf("rip\n");
 	}	
+
 	return EXIT_SUCCESS;
 }

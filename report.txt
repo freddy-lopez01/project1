@@ -1,0 +1,11 @@
+CS 415 - Project 1 - 
+Author: Freddy Lopez
+
+report: 
+
+The state of my submission is not the best. USPSV1 is in working order and compiles sucessfully and runs the
+ arguments from stdin and from files. It also frees the memory allocated for the array that I created for the 
+ program and arguments using a char ***array. USPSV2 is in somewhat working order, however, I cannot figure out 
+ how to send a signal back to the processes after forking all the processes and having the child processes 
+ wait. I was using pause() in order to stop the child processes but I could not understand how to efficietly 
+ send a signal back to the children to start executing. USPSV3 and USPV4 are both not in working order and have been barely even touched as I could not wrap my mind around the system calls. 
