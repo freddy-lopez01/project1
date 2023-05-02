@@ -1,3 +1,7 @@
+// Freddy Lopez
+// flopez2
+//CS 415 PRoject 1
+// THis is my own work
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
